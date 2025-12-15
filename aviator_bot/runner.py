@@ -6,7 +6,6 @@ import argparse
 import logging
 import sys
 import time
-import urllib.request
 from typing import Iterable, List
 
 from . import config, db
@@ -34,31 +33,20 @@ def backfill_from_files(paths: Iterable[str]) -> List[float]:
     return multipliers
 
 
-def ensure_browser_debug_port(host: str, port: int) -> None:
-    url = f"http://{host}:{port}/json/version"
-    try:
-        with urllib.request.urlopen(url, timeout=3) as response:
-            if response.status != 200:
-                raise RuntimeError(f"Chrome respondeu com status {response.status} no debug endpoint")
-    except Exception as exc:  # pylint: disable=broad-except
-        raise RuntimeError(
-            "Não foi possível comunicar com a sessão do navegador já aberta (Opera/Chrome/Edge). "
-            "Inicie-o com --remote-debugging-port e mantenha a janela logada no jogo."
-        ) from exc
-
-
 def check_dependencies(settings=None) -> None:
     """Validate storage e sessão de navegador antes de iniciar."""
 
     cfg = settings or config.get_settings()
     LOGGER.info("Verificando arquivo de dados local (JSON) em %s", cfg.data_path)
     db.ping(cfg)
-    LOGGER.info(
-        "Verificando sessão do navegador em %s:%s",
-        cfg.chrome_debug_host,
-        cfg.chrome_debug_port,
-    )
-    ensure_browser_debug_port(cfg.chrome_debug_host, cfg.chrome_debug_port)
+    if cfg.attach_to_existing and cfg.chrome_debug_port:
+        LOGGER.info(
+            "Usando sessão existente do navegador em %s:%s; certifique-se de que o Opera/Chrome está aberto",
+            cfg.chrome_debug_host,
+            cfg.chrome_debug_port,
+        )
+    else:
+        LOGGER.info("O bot abrirá automaticamente uma janela controlada apontando para o Aviator")
 
 
 def run_loop(time_steps: int, warmup_seconds: int, settings=None) -> None:

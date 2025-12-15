@@ -7,6 +7,7 @@ user manually signs in before letting automation take over.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Generator, List
@@ -31,6 +32,9 @@ BET_HEADER_XPATH = "/html/body/app-root/app-game/div/div[1]/div[2]/div/div[1]/ap
 IFRAME_XPATH = "//*[@id='casino']/main/div/div/div[2]/div/iframe"
 
 
+LOGGER = logging.getLogger("aviator-bot")
+
+
 @dataclass
 class ScraperState:
     last_multipliers: List[str] = field(default_factory=list)
@@ -40,12 +44,24 @@ class MultiplierScraper:
     def __init__(self, wait_timeout: int = 20, settings=None) -> None:
         self.settings = settings or config.get_settings()
         options = Options()
-        options.debugger_address = f"{self.settings.chrome_debug_host}:{self.settings.chrome_debug_port}"
         if self.settings.chrome_binary:
             options.binary_location = self.settings.chrome_binary
+        if self.settings.attach_to_existing and self.settings.chrome_debug_port:
+            options.debugger_address = f"{self.settings.chrome_debug_host}:{self.settings.chrome_debug_port}"
+            LOGGER.info(
+                "Reutilizando navegador existente em %s:%s",
+                self.settings.chrome_debug_host,
+                self.settings.chrome_debug_port,
+            )
+        else:
+            options.add_argument("--remote-allow-origins=*")
+            LOGGER.info("Abrindo nova janela do navegador para %s", self.settings.aviator_url)
+
         self.driver = webdriver.Chrome(options=options)
         self.wait = WebDriverWait(self.driver, wait_timeout)
         self.state = ScraperState()
+        if not self.settings.attach_to_existing:
+            self.driver.get(self.settings.aviator_url)
 
     def __enter__(self) -> "MultiplierScraper":
         return self

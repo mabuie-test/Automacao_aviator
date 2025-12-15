@@ -84,11 +84,16 @@ class ConfigForm(QtWidgets.QWidget):
         self.platform_user = QtWidgets.QLineEdit(self.settings.platform_user)
         self.platform_password = QtWidgets.QLineEdit(self.settings.platform_password)
         self.platform_password.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.attach_existing = QtWidgets.QCheckBox("Usar navegador já aberto (debug)")
+        self.attach_existing.setChecked(self.settings.attach_to_existing)
         self.chrome_host = QtWidgets.QLineEdit(self.settings.chrome_debug_host)
         self.chrome_port = QtWidgets.QSpinBox()
         self.chrome_port.setMaximum(65535)
-        self.chrome_port.setValue(self.settings.chrome_debug_port)
+        self.chrome_port.setValue(self.settings.chrome_debug_port or 0)
         self.chrome_binary = QtWidgets.QLineEdit(self.settings.chrome_binary or "")
+        self.chrome_host.setEnabled(self.attach_existing.isChecked())
+        self.chrome_port.setEnabled(self.attach_existing.isChecked())
+        self.attach_existing.toggled.connect(self._toggle_debug_fields)
 
         self.auto_bet = QtWidgets.QCheckBox("Habilitar auto-bet")
         self.auto_bet.setChecked(self.settings.auto_bet)
@@ -119,6 +124,7 @@ class ConfigForm(QtWidgets.QWidget):
         form_layout.addRow("Arquivo de dados", self.data_path)
         form_layout.addRow("Utilizador", self.platform_user)
         form_layout.addRow("Senha", self.platform_password)
+        form_layout.addRow(self.attach_existing)
         form_layout.addRow("Debug Host", self.chrome_host)
         form_layout.addRow("Debug Port", self.chrome_port)
         form_layout.addRow("Binário Opera/Chrome", self.chrome_binary)
@@ -160,14 +166,19 @@ class ConfigForm(QtWidgets.QWidget):
         logging.getLogger().removeHandler(self.log_handler)
         super().closeEvent(event)
 
+    def _toggle_debug_fields(self, checked: bool) -> None:
+        self.chrome_host.setEnabled(checked)
+        self.chrome_port.setEnabled(checked)
+
     def _gather_settings(self) -> config.Settings:
         cfg = config.Settings(
             aviator_url=self.aviator_url.text().strip(),
             data_path=self.data_path.text().strip(),
             platform_user=self.platform_user.text().strip(),
             platform_password=self.platform_password.text(),
+            attach_to_existing=self.attach_existing.isChecked(),
             chrome_debug_host=self.chrome_host.text().strip(),
-            chrome_debug_port=int(self.chrome_port.value()),
+            chrome_debug_port=int(self.chrome_port.value()) or None,
             chrome_binary=self.chrome_binary.text().strip() or None,
             auto_bet=self.auto_bet.isChecked(),
             base_bet=float(self.base_bet.value()),

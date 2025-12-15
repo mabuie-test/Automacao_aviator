@@ -1,17 +1,12 @@
 """Configuration helpers for the Aviator bot Python rewrite.
 
-Environment variables:
-    AVIATOR_URL:
-        Target URL for the Aviator game. Defaults to the production URL used by the
-        legacy bot.
-    CHROME_DEBUG_PORT:
-        Remote debugging port for the Selenium session. Defaults to 9222.
+Todas as configurações agora vivem no JSON ``~/.aviator_bot/settings.json`` e
+são editadas pela própria GUI. Variáveis de ambiente não são mais necessárias.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping, Optional
@@ -21,17 +16,12 @@ CONFIG_PATH = Path.home() / ".aviator_bot" / "settings.json"
 DATA_PATH = Path.home() / ".aviator_bot" / "multipliers.json"
 
 
-def _parse_bool(raw: str | None, default: bool = False) -> bool:
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 @dataclass(frozen=True)
 class Settings:
     aviator_url: str = "https://1whpc.com/casino/play/aviator"
-    chrome_debug_host: str = "127.0.0.1"
-    chrome_debug_port: int = 9222
+    attach_to_existing: bool = False
+    chrome_debug_host: str = ""
+    chrome_debug_port: Optional[int] = None
     chrome_binary: Optional[str] = None
     data_path: str = str(DATA_PATH)
     platform_user: str = ""
@@ -49,33 +39,6 @@ class Settings:
     session_ready_timeout: int = 90
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        def getenv_int(name: str, default: int) -> int:
-            raw = os.getenv(name)
-            return int(raw) if raw and raw.isdigit() else default
-
-        return cls(
-            aviator_url=os.getenv("AVIATOR_URL", cls.aviator_url),
-            chrome_debug_host=os.getenv("CHROME_DEBUG_HOST", cls.chrome_debug_host),
-            chrome_debug_port=getenv_int("CHROME_DEBUG_PORT", cls.chrome_debug_port),
-            chrome_binary=os.getenv("CHROME_BINARY", cls.chrome_binary),
-            data_path=os.getenv("DATA_PATH", cls.data_path),
-            platform_user=os.getenv("PLATFORM_USER", cls.platform_user),
-            platform_password=os.getenv("PLATFORM_PASSWORD", cls.platform_password),
-            auto_bet=_parse_bool(os.getenv("AUTO_BET"), default=cls.auto_bet),
-            base_bet=float(os.getenv("BASE_BET", cls.base_bet)),
-            max_bet=float(os.getenv("MAX_BET", cls.max_bet)),
-            confidence_floor=float(os.getenv("CONFIDENCE_FLOOR", cls.confidence_floor)),
-            streak_window=getenv_int("STREAK_WINDOW", cls.streak_window),
-            bet_input_selector=os.getenv("BET_INPUT_SELECTOR", cls.bet_input_selector),
-            bet_button_selector=os.getenv("BET_BUTTON_SELECTOR", cls.bet_button_selector),
-            cashout_button_selector=os.getenv("CASHOUT_BUTTON_SELECTOR", cls.cashout_button_selector),
-            warmup_seconds=getenv_int("WARMUP_SECONDS", cls.warmup_seconds),
-            session_ready_selector=os.getenv("SESSION_READY_SELECTOR", cls.session_ready_selector),
-            session_ready_timeout=getenv_int("SESSION_READY_TIMEOUT", cls.session_ready_timeout),
-        )
-
-    @classmethod
     def from_mapping(cls, data: Mapping[str, object]) -> "Settings":
         """Build settings from a mapping (e.g., loaded JSON)."""
 
@@ -84,8 +47,13 @@ class Settings:
 
         return cls(
             aviator_url=str(get("aviator_url", cls.aviator_url)),
+            attach_to_existing=bool(get("attach_to_existing", cls.attach_to_existing)),
             chrome_debug_host=str(get("chrome_debug_host", cls.chrome_debug_host)),
-            chrome_debug_port=int(get("chrome_debug_port", cls.chrome_debug_port)),
+            chrome_debug_port=(
+                int(get("chrome_debug_port", cls.chrome_debug_port))
+                if get("chrome_debug_port", cls.chrome_debug_port) not in (None, "")
+                else None
+            ),
             chrome_binary=str(get("chrome_binary", "")) or None,
             data_path=str(get("data_path", cls.data_path)),
             platform_user=str(get("platform_user", cls.platform_user)),
@@ -118,13 +86,17 @@ class Settings:
             raise ValueError("SESSION_READY_TIMEOUT deve ser de pelo menos 10 segundos")
         if not str(self.data_path).strip():
             raise ValueError("DATA_PATH não pode ser vazio")
+        if self.attach_to_existing and not self.chrome_debug_host:
+            raise ValueError("Informe o host de depuração ou desative 'usar sessão existente'")
+        if self.attach_to_existing and not self.chrome_debug_port:
+            raise ValueError("Informe a porta de depuração ou desative 'usar sessão existente'")
         return self
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2)
 
 
-_SETTINGS: Settings = Settings.from_env().validate()
+_SETTINGS: Settings = Settings().validate()
 
 
 def get_settings() -> Settings:
@@ -137,8 +109,9 @@ def set_settings(settings: Settings) -> None:
 
 
 def load_persisted_settings() -> Settings:
+    base = Settings().validate()
     if not CONFIG_PATH.exists():
-        return get_settings()
+        return base
     raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     return Settings.from_mapping(raw).validate()
 
@@ -158,3 +131,7 @@ def update_and_persist(**updates: object) -> Settings:
     set_settings(new_settings)
     persist_settings(new_settings)
     return new_settings
+
+
+# Carrega configurações persistidas na importação para que a GUI seja a fonte de verdade
+set_settings(load_persisted_settings())
