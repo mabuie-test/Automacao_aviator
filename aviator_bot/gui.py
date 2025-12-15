@@ -69,6 +69,7 @@ class ConfigForm(QtWidgets.QWidget):
         self.settings = config.load_persisted_settings()
         self.runner_thread: Optional[RunnerThread] = None
         self.health_thread: Optional[HealthCheckThread] = None
+        self.browser_window: Optional[QtWidgets.QMainWindow] = None
         self.log_handler = QtLogHandler()
         self.log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s"))
         self.log_handler.message_signal.connect(lambda msg: self._append_status(msg))
@@ -154,11 +155,15 @@ class ConfigForm(QtWidgets.QWidget):
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.start_button)
         buttons.addWidget(self.health_button)
+        self.popout_button = QtWidgets.QPushButton("Abrir navegador em janela grande")
+        self.popout_button.clicked.connect(self._open_browser_window)
+        buttons.addWidget(self.popout_button)
         layout.addLayout(buttons)
 
         self.web = QWebEngineView()
         self.web.setUrl(QtCore.QUrl(self.settings.aviator_url))
         self.web.urlChanged.connect(self._handle_url_change)
+        self.web.setMinimumHeight(600)
         layout.addWidget(self.web, stretch=1)
         layout.addWidget(self.status)
 
@@ -240,6 +245,24 @@ class ConfigForm(QtWidgets.QWidget):
         self.health_thread.finished_signal.connect(lambda msg: self._append_status(msg))
         self.health_thread.error_signal.connect(lambda err: self._append_status(f"Erro: {err}"))
         self.health_thread.start()
+
+    def _open_browser_window(self) -> None:
+        """Abre um navegador dedicado com tamanho amplo para facilitar o login."""
+
+        if self.browser_window and self.browser_window.isVisible():
+            self.browser_window.raise_()
+            self.browser_window.activateWindow()
+            return
+
+        self.browser_window = QtWidgets.QMainWindow(self)
+        self.browser_window.setWindowTitle("Navegador Aviator (janela dedicada)")
+        self.browser_window.resize(1400, 900)
+
+        view = QWebEngineView(self.browser_window)
+        view.setUrl(QtCore.QUrl(self.aviator_url.text().strip() or self.settings.aviator_url))
+        view.urlChanged.connect(self._handle_url_change)
+        self.browser_window.setCentralWidget(view)
+        self.browser_window.show()
 
 
 class MainWindow(QtWidgets.QMainWindow):

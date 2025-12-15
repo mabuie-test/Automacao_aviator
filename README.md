@@ -36,12 +36,14 @@ cada ajuste feito na interface e também pode ser editado manualmente em texto.
 ## Como usar (GUI com browser embutido)
 1. Rode a GUI para carregar o browser embutido e preencher credenciais/seletores. A GUI
    persiste tudo em `~/.aviator_bot/settings.json` (login/senha, endpoint do jogo, seletores
-   e caminho do arquivo de dados JSON) para reutilizar depois:
+   e caminho do arquivo de dados JSON) para reutilizar depois. Se preferir uma área de login
+   maior que o painel embutido, use o botão **Abrir navegador em janela grande** para abrir
+   um WebView dedicado com 1400x900 pixels:
    ```bash
    python -m aviator_bot.gui
    ```
 2. Clique em **Iniciar bot**. O Selenium abrirá automaticamente uma janela do navegador
-   apontando para o link informado. Use essa janela (ou o navegador embutido) para fazer login
+   apontando para o link informado. Use essa janela ou o WebView dedicado para fazer login
    manualmente; o bot espera o seletor de prontidão ficar clicável e cumpre o aquecimento
    mínimo de 120s antes de liberar auto-bet.
 3. Clique em **Testar conexões** para validar o arquivo de dados local (criado/regravado em
