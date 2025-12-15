@@ -1,8 +1,6 @@
 """Configuration helpers for the Aviator bot Python rewrite.
 
 Environment variables:
-    MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE:
-        Connection settings for the backing MySQL instance.
     AVIATOR_URL:
         Target URL for the Aviator game. Defaults to the production URL used by the
         legacy bot.
@@ -20,6 +18,7 @@ from typing import Mapping, Optional
 
 
 CONFIG_PATH = Path.home() / ".aviator_bot" / "settings.json"
+DATA_PATH = Path.home() / ".aviator_bot" / "multipliers.json"
 
 
 def _parse_bool(raw: str | None, default: bool = False) -> bool:
@@ -30,15 +29,13 @@ def _parse_bool(raw: str | None, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    mysql_host: str = "localhost"
-    mysql_port: int = 3306
-    mysql_user: str = "root"
-    mysql_password: str = ""
-    mysql_database: str = "aviator"
     aviator_url: str = "https://1whpc.com/casino/play/aviator"
     chrome_debug_host: str = "127.0.0.1"
     chrome_debug_port: int = 9222
     chrome_binary: Optional[str] = None
+    data_path: str = str(DATA_PATH)
+    platform_user: str = ""
+    platform_password: str = ""
     auto_bet: bool = False
     base_bet: float = 1.0
     max_bet: float = 25.0
@@ -58,15 +55,13 @@ class Settings:
             return int(raw) if raw and raw.isdigit() else default
 
         return cls(
-            mysql_host=os.getenv("MYSQL_HOST", cls.mysql_host),
-            mysql_port=getenv_int("MYSQL_PORT", cls.mysql_port),
-            mysql_user=os.getenv("MYSQL_USER", cls.mysql_user),
-            mysql_password=os.getenv("MYSQL_PASSWORD", cls.mysql_password),
-            mysql_database=os.getenv("MYSQL_DATABASE", cls.mysql_database),
             aviator_url=os.getenv("AVIATOR_URL", cls.aviator_url),
             chrome_debug_host=os.getenv("CHROME_DEBUG_HOST", cls.chrome_debug_host),
             chrome_debug_port=getenv_int("CHROME_DEBUG_PORT", cls.chrome_debug_port),
             chrome_binary=os.getenv("CHROME_BINARY", cls.chrome_binary),
+            data_path=os.getenv("DATA_PATH", cls.data_path),
+            platform_user=os.getenv("PLATFORM_USER", cls.platform_user),
+            platform_password=os.getenv("PLATFORM_PASSWORD", cls.platform_password),
             auto_bet=_parse_bool(os.getenv("AUTO_BET"), default=cls.auto_bet),
             base_bet=float(os.getenv("BASE_BET", cls.base_bet)),
             max_bet=float(os.getenv("MAX_BET", cls.max_bet)),
@@ -88,15 +83,13 @@ class Settings:
             return data.get(name, default)
 
         return cls(
-            mysql_host=str(get("mysql_host", cls.mysql_host)),
-            mysql_port=int(get("mysql_port", cls.mysql_port)),
-            mysql_user=str(get("mysql_user", cls.mysql_user)),
-            mysql_password=str(get("mysql_password", cls.mysql_password)),
-            mysql_database=str(get("mysql_database", cls.mysql_database)),
             aviator_url=str(get("aviator_url", cls.aviator_url)),
             chrome_debug_host=str(get("chrome_debug_host", cls.chrome_debug_host)),
             chrome_debug_port=int(get("chrome_debug_port", cls.chrome_debug_port)),
             chrome_binary=str(get("chrome_binary", "")) or None,
+            data_path=str(get("data_path", cls.data_path)),
+            platform_user=str(get("platform_user", cls.platform_user)),
+            platform_password=str(get("platform_password", cls.platform_password)),
             auto_bet=bool(get("auto_bet", cls.auto_bet)),
             base_bet=float(get("base_bet", cls.base_bet)),
             max_bet=float(get("max_bet", cls.max_bet)),
@@ -123,6 +116,8 @@ class Settings:
             raise ValueError("WARMUP_SECONDS deve ser de pelo menos 120 segundos para garantir coleta inicial")
         if self.session_ready_timeout < 10:
             raise ValueError("SESSION_READY_TIMEOUT deve ser de pelo menos 10 segundos")
+        if not str(self.data_path).strip():
+            raise ValueError("DATA_PATH não pode ser vazio")
         return self
 
     def to_json(self) -> str:
@@ -151,3 +146,15 @@ def load_persisted_settings() -> Settings:
 def persist_settings(settings: Settings) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(settings.to_json(), encoding="utf-8")
+
+
+def update_and_persist(**updates: object) -> Settings:
+    """Helper to update the active settings in-place and persist to disk."""
+
+    current = get_settings()
+    data = asdict(current)
+    data.update(updates)
+    new_settings = Settings.from_mapping(data).validate()
+    set_settings(new_settings)
+    persist_settings(new_settings)
+    return new_settings

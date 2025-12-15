@@ -53,16 +53,54 @@ class MultiplierScraper:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
+    def _update_final_endpoint(self) -> None:
+        """Persiste o endpoint final resolvido pelo navegador aberto."""
+
+        try:
+            current = self.driver.current_url
+        except Exception:
+            return
+        if current and current != self.settings.aviator_url:
+            self.settings = config.update_and_persist(aviator_url=current)
+
+    def _try_fill_credentials(self) -> None:
+        if not (self.settings.platform_user or self.settings.platform_password):
+            return
+        try:
+            user_field = None
+            for selector in ["input[type='email']", "input[type='text']"]:
+                matches = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                if matches:
+                    user_field = matches[0]
+                    break
+            if user_field and self.settings.platform_user:
+                user_field.clear()
+                user_field.send_keys(self.settings.platform_user)
+
+            pass_field = None
+            for selector in ["input[type='password']", "input[type='tel']"]:
+                matches = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                if matches:
+                    pass_field = matches[0]
+                    break
+            if pass_field and self.settings.platform_password:
+                pass_field.clear()
+                pass_field.send_keys(self.settings.platform_password)
+        except Exception:
+            # login pode variar; ignore falhas silenciosamente
+            pass
+
     def ensure_on_game(self) -> None:
-        if self.driver.current_url != self.settings.aviator_url:
-            self.driver.get(self.settings.aviator_url)
+        self.driver.get(self.settings.aviator_url)
         self.wait.until(EC.frame_to_be_available_and_switch_to_it((By.XPATH, IFRAME_XPATH)))
+        self._update_final_endpoint()
 
     def wait_for_manual_session(self) -> None:
         """Espera o usuário finalizar o login e expor o formulário de aposta."""
 
         self.driver.switch_to.default_content()
         self.ensure_on_game()
+        self._try_fill_credentials()
         try:
             WebDriverWait(self.driver, self.settings.session_ready_timeout).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, self.settings.session_ready_selector)),
@@ -73,6 +111,7 @@ class MultiplierScraper:
                 "O navegador aberto não parece estar autenticado ou com o jogo carregado. "
                 "Finalize o login manualmente e verifique se o formulário de aposta está ativo."
             ) from exc
+        self._update_final_endpoint()
 
     def _read_header_value(self) -> str:
         element = self.wait.until(EC.presence_of_element_located((By.XPATH, BET_HEADER_XPATH)))

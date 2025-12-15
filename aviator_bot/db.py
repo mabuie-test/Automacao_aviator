@@ -1,87 +1,69 @@
-"""MySQL helpers for persisting multipliers and predictions."""
+"""File-based persistence for multipliers and settings snapshots.
+
+The previous version stored everything in MySQL. To simplify setup and keep
+data co-located with the GUI settings, this module now persists multipliers in
+``~/.aviator_bot/multipliers.json`` (or a custom ``data_path``). The JSON file
+is append-friendly and rewritten on every insert to keep things simple and
+resilient.
+"""
 
 from __future__ import annotations
 
-import contextlib
+import json
+from pathlib import Path
 from typing import List, Sequence
-
-import mysql.connector
 
 from . import config
 
 
-CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS multipliers (
-    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    value DECIMAL(10, 2) NOT NULL,
-    observed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (id)
-) ENGINE=InnoDB;
-"""
-
-INSERT_SQL = "INSERT INTO multipliers (value) VALUES (%s)"
-
-FETCH_RECENT_SQL = """
-SELECT value
-FROM multipliers
-ORDER BY observed_at DESC, id DESC
-LIMIT %s;
-"""
-
-COUNT_SQL = "SELECT COUNT(*) FROM multipliers"
-
-
-@contextlib.contextmanager
-def get_connection(settings=None):
+def _data_path(settings=None) -> Path:
     cfg = settings or config.get_settings()
-    conn = mysql.connector.connect(
-        host=cfg.mysql_host,
-        port=cfg.mysql_port,
-        user=cfg.mysql_user,
-        password=cfg.mysql_password,
-        database=cfg.mysql_database,
-        autocommit=False,
-    )
-    try:
-        yield conn
-    finally:
-        conn.close()
+    return Path(cfg.data_path)
 
 
 def initialize_schema(settings=None) -> None:
-    with get_connection(settings) as conn:
-        cursor = conn.cursor()
-        cursor.execute(CREATE_TABLE_SQL)
-        conn.commit()
+    path = _data_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps({"multipliers": []}, indent=2), encoding="utf-8")
 
 
 def ping(settings=None) -> None:
-    """Fail fast when a conexão MySQL não responde."""
+    """File-based check to mimic the old MySQL readiness call."""
 
-    with get_connection(settings) as conn:
-        conn.ping(reconnect=True, attempts=2, delay=1)
+    path = _data_path(settings)
+    initialize_schema(settings)
+    path.touch(exist_ok=True)
+
+
+def _load_all(settings=None) -> List[float]:
+    initialize_schema(settings)
+    path = _data_path(settings)
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        values = raw.get("multipliers", [])
+        return [float(v) for v in values]
+    except json.JSONDecodeError:
+        # fallback to empty when the file was partially written
+        return []
 
 
 def insert_multipliers(values: Sequence[float], settings=None) -> int:
     if not values:
         return 0
-    with get_connection(settings) as conn:
-        cursor = conn.cursor()
-        cursor.executemany(INSERT_SQL, [(v,) for v in values])
-        conn.commit()
-        return cursor.rowcount
+    existing = _load_all(settings)
+    existing.extend(float(v) for v in values)
+    path = _data_path(settings)
+    path.write_text(json.dumps({"multipliers": existing}, indent=2), encoding="utf-8")
+    return len(values)
 
 
 def fetch_recent_multipliers(limit: int, settings=None) -> List[float]:
-    with get_connection(settings) as conn:
-        cursor = conn.cursor()
-        cursor.execute(FETCH_RECENT_SQL, (limit,))
-        return [float(row[0]) for row in cursor.fetchall()]
+    values = list(reversed(_load_all(settings)))
+    if limit <= 0:
+        return []
+    return values[:limit]
 
 
 def count_multipliers(settings=None) -> int:
-    with get_connection(settings) as conn:
-        cursor = conn.cursor()
-        cursor.execute(COUNT_SQL)
-        (count,) = cursor.fetchone()
-        return int(count)
+    return len(_load_all(settings))

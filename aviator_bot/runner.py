@@ -42,16 +42,16 @@ def ensure_browser_debug_port(host: str, port: int) -> None:
                 raise RuntimeError(f"Chrome respondeu com status {response.status} no debug endpoint")
     except Exception as exc:  # pylint: disable=broad-except
         raise RuntimeError(
-            "Não foi possível comunicar com a sessão do navegador já aberta (Chrome/Opera/Edge). "
+            "Não foi possível comunicar com a sessão do navegador já aberta (Opera/Chrome/Edge). "
             "Inicie-o com --remote-debugging-port e mantenha a janela logada no jogo."
         ) from exc
 
 
 def check_dependencies(settings=None) -> None:
-    """Validate MySQL e sessão de navegador antes de iniciar."""
+    """Validate storage e sessão de navegador antes de iniciar."""
 
     cfg = settings or config.get_settings()
-    LOGGER.info("Verificando MySQL (%s:%s)", cfg.mysql_host, cfg.mysql_port)
+    LOGGER.info("Verificando arquivo de dados em %s", cfg.data_path)
     db.ping(cfg)
     LOGGER.info(
         "Verificando sessão do navegador em %s:%s",
@@ -63,10 +63,10 @@ def check_dependencies(settings=None) -> None:
 
 def run_loop(time_steps: int, warmup_seconds: int, settings=None) -> None:
     cfg = settings or config.get_settings()
-    LOGGER.info("Checando MySQL e sessão do Chrome antes de iniciar loop")
+    LOGGER.info("Checando armazenamento local e sessão do navegador antes de iniciar loop")
     check_dependencies(cfg)
 
-    LOGGER.info("Inicializando schema do MySQL se necessário")
+    LOGGER.info("Inicializando arquivo de dados se necessário")
     db.initialize_schema(cfg)
 
     model = MultiplierModel(time_steps=time_steps)
@@ -132,7 +132,7 @@ def run_loop(time_steps: int, warmup_seconds: int, settings=None) -> None:
 
 
 def cli(argv: List[str]) -> int:
-    parser = argparse.ArgumentParser(description="Aviator bot em Python + MySQL")
+    parser = argparse.ArgumentParser(description="Aviator bot em Python com armazenamento local")
     parser.add_argument(
         "--time-steps",
         type=int,
@@ -142,7 +142,7 @@ def cli(argv: List[str]) -> int:
     parser.add_argument(
         "--seed-data",
         nargs="*",
-        help="Arquivos de texto com multiplicadores para preencher o banco antes de rodar",
+        help="Arquivos de texto com multiplicadores para preencher o histórico local antes de rodar",
     )
     parser.add_argument(
         "--warmup-seconds",
@@ -153,7 +153,7 @@ def cli(argv: List[str]) -> int:
     parser.add_argument(
         "--check-only",
         action="store_true",
-        help="Apenas valida conexão MySQL e sessão do navegador e encerra",
+        help="Apenas valida o arquivo de dados e a sessão do navegador e encerra",
     )
 
     args = parser.parse_args(argv)
@@ -161,8 +161,9 @@ def cli(argv: List[str]) -> int:
     if args.seed_data:
         seeds = backfill_from_files(args.seed_data)
         if seeds:
-            db.initialize_schema(config.get_settings())
-            inserted = db.insert_multipliers(seeds, config.get_settings())
+            cfg = config.get_settings()
+            db.initialize_schema(cfg)
+            inserted = db.insert_multipliers(seeds, cfg)
             LOGGER.info("Pré-carregados %s multiplicadores dos arquivos de treino", inserted)
 
     if args.check_only:

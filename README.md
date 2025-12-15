@@ -1,17 +1,17 @@
-# Aviator Bot (Python + MySQL)
+# Aviator Bot (Python + armazenamento local)
 
 Reescrita em Python do bot de previsões para o jogo Aviator. A nova versão
-armazena os multiplicadores em MySQL, usa um modelo de Random Forest para
-prever o próximo ponto de cashout com base em janelas temporais e responde em
-tempo real ao navegador já aberto. Agora também inclui uma GUI com navegador
-embutido (Opera/Chromium) para que você conecte a sessão manual, salve
-credenciais/endpoints e dispare o bot sem precisar do terminal. O guia de uso
-agora está em texto puro em `docs/Como_usar_Aviator_Bot.md`, eliminando o
-arquivo DOCX para evitar binários em PRs.
+armazena os multiplicadores em um arquivo JSON local (sem MySQL), usa um modelo
+de Random Forest para prever o próximo ponto de cashout com base em janelas
+temporais e responde em tempo real ao navegador já aberto. A GUI embutida
+(Opera/Chromium) conecta direto no link fornecido, captura automaticamente o
+endpoint final do jogo após redirecionamentos, guarda credenciais para reuso e
+dispara o bot sem precisar do terminal. O guia de uso agora está em texto puro
+em `docs/Como_usar_Aviator_Bot.md`, eliminando o arquivo DOCX para evitar
+binários em PRs.
 
 ## Requisitos
 - Python 3.11+
-- MySQL acessível (usuário com permissões de leitura/escrita)
 - Navegador Chromium-based (Opera/Chrome/Edge) aberto com `--remote-debugging-port`
   para que o bot reutilize a sessão autenticada
 - Para a GUI: `PyQt5` + `PyQtWebEngine` (já listados em `requirements.txt`)
@@ -22,19 +22,17 @@ Instale as dependências Python:
 pip install -r requirements.txt
 ```
 
-Configure as variáveis de ambiente para o banco de dados e (opcionalmente)
+Configure as variáveis de ambiente para o endpoint, armazenamento local e (opcionalmente)
 para o modo de autoaposta e estratégia:
 
 ```bash
-export MYSQL_HOST=localhost
-export MYSQL_PORT=3306
-export MYSQL_USER=root
-export MYSQL_PASSWORD=sua_senha
-export MYSQL_DATABASE=aviator
 export AVIATOR_URL="https://1whpc.com/casino/play/aviator"
 export CHROME_DEBUG_HOST=127.0.0.1     # host do debug remoto (Opera/Chrome/Edge)
 export CHROME_DEBUG_PORT=9222          # porta do debug remoto
 export CHROME_BINARY="C:/Program Files/Opera/opera.exe"  # binário do Opera (opcional)
+export DATA_PATH="~/.aviator_bot/multipliers.json"        # arquivo JSON regravável
+export PLATFORM_USER="seu_login"                         # opcional: preenche o login
+export PLATFORM_PASSWORD="sua_senha"                     # opcional: preenche a senha
 export AUTO_BET=true               # habilita cliques automáticos
 export BASE_BET=2                  # valor inicial sugerido
 export MAX_BET=20                  # teto de exposição
@@ -54,19 +52,21 @@ export SESSION_READY_TIMEOUT=90     # tempo máximo esperando você logar manual
    "C:/Program Files/Opera/opera.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%/opera-aviator"
    ```
 2. Rode a GUI para carregar o browser embutido e preencher credenciais/seletores. A GUI
-   persiste tudo em `~/.aviator_bot/settings.json` (senha, host do MySQL e endpoint do jogo)
-   para reutilizar depois:
+   persiste tudo em `~/.aviator_bot/settings.json` (login/senha, endpoint do jogo, seletores
+   e caminho do arquivo de dados JSON) para reutilizar depois:
    ```bash
    python -m aviator_bot.gui
    ```
 3. Use o navegador embutido para logar manualmente na plataforma. O bot só começa após
    detectar o seletor de prontidão configurado e cumprir o aquecimento mínimo de 120s
    (ou mais, se definido).
-4. Clique em **Testar conexões** para validar o MySQL e a sessão de depuração do Opera/Chrome
-   com as credenciais inseridas antes de iniciar. O resultado aparece no painel de status.
+4. Clique em **Testar conexões** para validar o arquivo de dados local (criado/regravado em
+   `DATA_PATH`) e a sessão de depuração do Opera/Chrome antes de iniciar. O resultado aparece
+   no painel de status.
 5. Clique em **Iniciar bot** na GUI. O loop de coleta/predição roda em uma thread separada,
-   insere multiplicadores no MySQL, calcula stake/cashout automaticamente e respeita
-   as travas de risco/volatilidade. Os logs aparecem no painel inferior.
+   grava multiplicadores no JSON local, calcula stake/cashout automaticamente, ajusta o
+   endpoint final detectado no navegador e respeita as travas de risco/volatilidade. Os logs
+   aparecem no painel inferior.
 
 ## Como usar (CLI tradicional)
 1. Inicie o Opera com depuração remota (ou outro navegador compatível), por exemplo:
@@ -74,8 +74,8 @@ export SESSION_READY_TIMEOUT=90     # tempo máximo esperando você logar manual
    "C:/Program Files/Opera/opera.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%/opera-aviator"
    ```
 2. Faça login manualmente no site do jogo na janela aberta.
-3. Certifique-se de que o MySQL responde (o bot aborta cedo se não conseguir
-   conectar) e que o navegador aberto com depuração remota está logado no jogo.
+3. Certifique-se de que o arquivo local indicado em `DATA_PATH` é gravável e que
+   o navegador aberto com depuração remota está logado no jogo.
 4. Rode o bot (o loop agora reage assim que um novo round encerra, sem
    polling manual). Por padrão ele passa os primeiros minutos apenas
    observando/coletando dados antes de habilitar apostas automáticas. O
@@ -94,7 +94,7 @@ encerre após o diagnóstico:
 python -m aviator_bot.runner --check-only
 ```
 
-O comando acima cria a tabela `multipliers` no MySQL (caso não exista),
+O comando acima cria o arquivo JSON de multipliers (caso não exista),
 pré-carrega multiplicadores dos arquivos de treino e passa a coletar novos
 valores via Selenium. As previsões são logadas no console e, se `AUTO_BET` for
 `true`, o bot envia os cliques de aposta/cashout conforme a estratégia de risco
@@ -104,13 +104,13 @@ embutida.
 1. **Carregamento de configuração** (`aviator_bot/config.py`): lê variáveis de
    ambiente, normaliza tipos (bool/float/int), valida limites de risco e agora
    persiste/recupera um JSON local com credenciais e endpoint do jogo.
-2. **Banco de dados MySQL** (`aviator_bot/db.py`): garante a tabela
+2. **Persistência local** (`aviator_bot/db.py`): garante o arquivo JSON
    `multipliers`, grava cada novo multiplicador observado e oferece consultas
    para treinar e alimentar o modelo de previsão.
 3. **Scraping em tempo real** (`aviator_bot/scraper.py`): conecta ao Opera/Chrome já
-   aberto via depuração remota, sincroniza o iframe do jogo e observa o valor de
-   cashout ao fim de cada rodada. Em caso de erro ou timeout, ressincroniza o
-   iframe automaticamente.
+   aberto via depuração remota, abre o link fornecido, captura o endpoint final após
+   redirecionamentos e observa o valor de cashout ao fim de cada rodada. Em caso de
+   erro ou timeout, ressincroniza o iframe automaticamente.
 4. **Modelo de previsão** (`aviator_bot/model.py`): treina um Random Forest
    usando janelas temporais de multiplicadores e prevê o próximo valor esperado.
 5. **Gestão de risco e execução** (`aviator_bot/strategy.py` e
@@ -127,7 +127,7 @@ embutida.
 ## Estrutura
 - `aviator_bot/config.py`: gerenciamento de configurações, variáveis de ambiente
   e persistência em JSON local.
-- `aviator_bot/db.py`: conexão e operações com MySQL.
+- `aviator_bot/db.py`: operações com o arquivo JSON de multiplicadores.
 - `aviator_bot/model.py`: modelo de previsão usando Random Forest.
 - `aviator_bot/scraper.py`: scraper Selenium que lê os multiplicadores na página.
 - `aviator_bot/runner.py`: orquestração de scraping, persistência e previsões.

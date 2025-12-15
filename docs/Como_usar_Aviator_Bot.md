@@ -7,7 +7,6 @@ armazenamento de credenciais.
 
 ## Pré-requisitos
 - Python 3.11+
-- MySQL acessível (leitura/gravação)
 - Navegador baseado em Chromium (Opera/Chrome/Edge) aberto com
   `--remote-debugging-port` para reaproveitar a sessão autenticada
 - Dependências Python listadas em `requirements.txt` (`PyQt5` e `PyQtWebEngine`
@@ -19,17 +18,15 @@ pip install -r requirements.txt
 ```
 
 ## Configuração (variáveis de ambiente principais)
-Configure o banco, endpoint e parâmetros de risco/automação antes de iniciar:
+Configure o endpoint, armazenamento local e parâmetros de risco/automação antes de iniciar:
 ```bash
-export MYSQL_HOST=localhost
-export MYSQL_PORT=3306
-export MYSQL_USER=root
-export MYSQL_PASSWORD=sua_senha
-export MYSQL_DATABASE=aviator
 export AVIATOR_URL="https://1whpc.com/casino/play/aviator"
 export CHROME_DEBUG_HOST=127.0.0.1
 export CHROME_DEBUG_PORT=9222
 export CHROME_BINARY="C:/Program Files/Opera/opera.exe"
+export DATA_PATH="~/.aviator_bot/multipliers.json"
+export PLATFORM_USER="seu_login"             # opcional: preenche login automaticamente
+export PLATFORM_PASSWORD="sua_senha"         # opcional: preenche senha
 export AUTO_BET=true
 export BASE_BET=2
 export MAX_BET=20
@@ -48,19 +45,19 @@ export SESSION_READY_TIMEOUT=90
    ```bash
    "C:/Program Files/Opera/opera.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%/opera-aviator"
    ```
-2. Inicie a GUI e preencha host/porta do MySQL, credenciais e endpoint do jogo:
+2. Inicie a GUI e preencha login/senha (opcionais), endpoint do jogo, seletores e caminho do arquivo de dados JSON:
    ```bash
    python -m aviator_bot.gui
    ```
 3. Faça login manualmente no navegador embutido; o bot só continua quando o
    seletor de prontidão (`SESSION_READY_SELECTOR`) ficar clicável e o
    aquecimento mínimo (>=120s) for cumprido.
-4. Clique em **Testar conexões** para validar MySQL e sessão de depuração antes
+4. Clique em **Testar conexões** para validar o arquivo local e sessão de depuração antes
    de iniciar.
 5. Clique em **Iniciar bot**. O loop roda em segundo plano, salva
-   multiplicadores no MySQL, ajusta aposta/cashout com base em confiança do
-   modelo, tendência recente e freios de volatilidade. As credenciais/endpoint
-   ficam persistidos em `~/.aviator_bot/settings.json` para reuso.
+   multiplicadores no JSON local, ajusta aposta/cashout com base em confiança do
+   modelo, tendência recente e freios de volatilidade, captura o endpoint final
+   da janela e reusa as credenciais/endpoint persistidos em `~/.aviator_bot/settings.json`.
 
 ## Usando via CLI
 1. Abra o navegador com depuração remota (mesmo comando do passo 1 acima) e

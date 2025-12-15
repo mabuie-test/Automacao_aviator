@@ -59,16 +59,11 @@ class ConfigForm(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
 
         form_layout = QtWidgets.QFormLayout()
-        self.mysql_host = QtWidgets.QLineEdit(self.settings.mysql_host)
-        self.mysql_port = QtWidgets.QSpinBox()
-        self.mysql_port.setMaximum(65535)
-        self.mysql_port.setValue(self.settings.mysql_port)
-        self.mysql_user = QtWidgets.QLineEdit(self.settings.mysql_user)
-        self.mysql_password = QtWidgets.QLineEdit(self.settings.mysql_password)
-        self.mysql_password.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.mysql_db = QtWidgets.QLineEdit(self.settings.mysql_database)
-
         self.aviator_url = QtWidgets.QLineEdit(self.settings.aviator_url)
+        self.data_path = QtWidgets.QLineEdit(self.settings.data_path)
+        self.platform_user = QtWidgets.QLineEdit(self.settings.platform_user)
+        self.platform_password = QtWidgets.QLineEdit(self.settings.platform_password)
+        self.platform_password.setEchoMode(QtWidgets.QLineEdit.Password)
         self.chrome_host = QtWidgets.QLineEdit(self.settings.chrome_debug_host)
         self.chrome_port = QtWidgets.QSpinBox()
         self.chrome_port.setMaximum(65535)
@@ -100,12 +95,10 @@ class ConfigForm(QtWidgets.QWidget):
         self.session_ready_timeout.setMinimum(10)
         self.session_ready_timeout.setValue(self.settings.session_ready_timeout)
 
-        form_layout.addRow("MySQL Host", self.mysql_host)
-        form_layout.addRow("MySQL Port", self.mysql_port)
-        form_layout.addRow("MySQL User", self.mysql_user)
-        form_layout.addRow("MySQL Password", self.mysql_password)
-        form_layout.addRow("Banco", self.mysql_db)
         form_layout.addRow("Aviator URL", self.aviator_url)
+        form_layout.addRow("Arquivo de dados", self.data_path)
+        form_layout.addRow("Utilizador", self.platform_user)
+        form_layout.addRow("Senha", self.platform_password)
         form_layout.addRow("Debug Host", self.chrome_host)
         form_layout.addRow("Debug Port", self.chrome_port)
         form_layout.addRow("Binário Opera/Chrome", self.chrome_binary)
@@ -139,17 +132,16 @@ class ConfigForm(QtWidgets.QWidget):
 
         self.web = QWebEngineView()
         self.web.setUrl(QtCore.QUrl(self.settings.aviator_url))
+        self.web.urlChanged.connect(self._handle_url_change)
         layout.addWidget(self.web, stretch=1)
         layout.addWidget(self.status)
 
     def _gather_settings(self) -> config.Settings:
         cfg = config.Settings(
-            mysql_host=self.mysql_host.text().strip(),
-            mysql_port=int(self.mysql_port.value()),
-            mysql_user=self.mysql_user.text().strip(),
-            mysql_password=self.mysql_password.text(),
-            mysql_database=self.mysql_db.text().strip(),
             aviator_url=self.aviator_url.text().strip(),
+            data_path=self.data_path.text().strip(),
+            platform_user=self.platform_user.text().strip(),
+            platform_password=self.platform_password.text(),
             chrome_debug_host=self.chrome_host.text().strip(),
             chrome_debug_port=int(self.chrome_port.value()),
             chrome_binary=self.chrome_binary.text().strip() or None,
@@ -170,6 +162,17 @@ class ConfigForm(QtWidgets.QWidget):
     def _append_status(self, message: str) -> None:
         self.status.append(message)
 
+    def _handle_url_change(self, url: QtCore.QUrl) -> None:
+        final_url = url.toString()
+        self.aviator_url.setText(final_url)
+        self.settings = config.update_and_persist(
+            aviator_url=final_url,
+            data_path=self.data_path.text().strip(),
+            platform_user=self.platform_user.text().strip(),
+            platform_password=self.platform_password.text(),
+        )
+        self._append_status(f"Endpoint ajustado para {final_url}")
+
     def _start_bot(self) -> None:
         if self.runner_thread and self.runner_thread.isRunning():
             self._append_status("Bot já está rodando.")
@@ -181,6 +184,8 @@ class ConfigForm(QtWidgets.QWidget):
             return
 
         config.persist_settings(cfg)
+        self.settings = cfg
+        self.web.setUrl(QtCore.QUrl(cfg.aviator_url))
         self._append_status("Configurações salvas e aplicadas. Iniciando loop...")
         self.runner_thread = RunnerThread(cfg, time_steps=12, warmup_seconds=cfg.warmup_seconds)
         self.runner_thread.finished_signal.connect(lambda msg: self._append_status(msg))
@@ -194,7 +199,8 @@ class ConfigForm(QtWidgets.QWidget):
             QtWidgets.QMessageBox.critical(self, "Erro", str(exc))
             return
 
-        self._append_status("Validando MySQL e sessão do navegador...")
+        self.settings = cfg
+        self._append_status("Validando arquivo de dados e sessão do navegador...")
         self.health_thread = HealthCheckThread(cfg)
         self.health_thread.finished_signal.connect(lambda msg: self._append_status(msg))
         self.health_thread.error_signal.connect(lambda err: self._append_status(f"Erro: {err}"))
