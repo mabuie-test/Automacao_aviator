@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PyQt5 import QtCore, QtWidgets
@@ -9,6 +10,21 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 
 from . import config
 from .runner import check_dependencies, run_loop
+
+
+class QtLogHandler(QtCore.QObject, logging.Handler):
+    """Envio de logs Python para o painel de status da GUI."""
+
+    message_signal = QtCore.pyqtSignal(str)
+
+    def __init__(self) -> None:
+        QtCore.QObject.__init__(self)
+        logging.Handler.__init__(self)
+        self.setLevel(logging.INFO)
+
+    def emit(self, record: logging.LogRecord) -> None:  # type: ignore[override]
+        msg = self.format(record)
+        self.message_signal.emit(msg)
 
 
 class RunnerThread(QtCore.QThread):
@@ -53,6 +69,10 @@ class ConfigForm(QtWidgets.QWidget):
         self.settings = config.load_persisted_settings()
         self.runner_thread: Optional[RunnerThread] = None
         self.health_thread: Optional[HealthCheckThread] = None
+        self.log_handler = QtLogHandler()
+        self.log_handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s: %(message)s"))
+        self.log_handler.message_signal.connect(lambda msg: self._append_status(msg))
+        logging.getLogger().addHandler(self.log_handler)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -135,6 +155,10 @@ class ConfigForm(QtWidgets.QWidget):
         self.web.urlChanged.connect(self._handle_url_change)
         layout.addWidget(self.web, stretch=1)
         layout.addWidget(self.status)
+
+    def closeEvent(self, event):  # type: ignore[override]
+        logging.getLogger().removeHandler(self.log_handler)
+        super().closeEvent(event)
 
     def _gather_settings(self) -> config.Settings:
         cfg = config.Settings(

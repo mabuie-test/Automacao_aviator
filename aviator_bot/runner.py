@@ -51,7 +51,7 @@ def check_dependencies(settings=None) -> None:
     """Validate storage e sessão de navegador antes de iniciar."""
 
     cfg = settings or config.get_settings()
-    LOGGER.info("Verificando arquivo de dados em %s", cfg.data_path)
+    LOGGER.info("Verificando arquivo de dados local (JSON) em %s", cfg.data_path)
     db.ping(cfg)
     LOGGER.info(
         "Verificando sessão do navegador em %s:%s",
@@ -103,6 +103,11 @@ def run_loop(time_steps: int, warmup_seconds: int, settings=None) -> None:
                     prediction,
                     confidence,
                     history[-max(cfg.streak_window * 2, time_steps) :],
+                )
+                LOGGER.info(
+                    "Odd de colapso prevista para a próxima rodada: %.2fx (confiança %.2f)",
+                    prediction,
+                    confidence,
                 )
                 LOGGER.info(
                     "Próximo alvo: %.2fx (confiança %.2f) | Stake sugerido: %.2f | Racional: %s",

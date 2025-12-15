@@ -6,9 +6,10 @@ de Random Forest para prever o próximo ponto de cashout com base em janelas
 temporais e responde em tempo real ao navegador já aberto. A GUI embutida
 (Opera/Chromium) conecta direto no link fornecido, captura automaticamente o
 endpoint final do jogo após redirecionamentos, guarda credenciais para reuso e
-dispara o bot sem precisar do terminal. O guia de uso agora está em texto puro
-em `docs/Como_usar_Aviator_Bot.md`, eliminando o arquivo DOCX para evitar
-binários em PRs.
+dispara o bot sem precisar do terminal. O painel de status agora recebe todos os
+logs (incluindo a odd prevista de colapso da próxima rodada). O guia de uso está
+em texto puro em `docs/Como_usar_Aviator_Bot.md`, eliminando o arquivo DOCX para
+evitar binários em PRs.
 
 ## Requisitos
 - Python 3.11+
